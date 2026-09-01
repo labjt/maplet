@@ -68,3 +68,40 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     statusline::draw(frame, app, chunks[3]);
     modal::draw(frame, app, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::app::{App, Item};
+    use crate::config::Config;
+    use crate::theme::Theme;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn render(app: &mut App, w: u16, h: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|f| super::draw(f, app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        (0..h)
+            .map(|y| {
+                (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The user's own message must stay visible after the reply arrives.
+    #[test]
+    fn user_message_visible_after_reply() {
+        let mut app = App::new(&Config::default(), Theme::ansi());
+        app.items.push(Item::User { text: "Reply with a fenced python block.".into() });
+        app.items.push(Item::Assistant {
+            id: 1,
+            md: "```python\nprint(\"hello\")\n```".into(),
+            revision: 1,
+            streaming: false,
+        });
+        let screen = render(&mut app, 100, 30);
+        eprintln!("--- rendered ---\n{screen}\n--- end ---");
+        assert!(screen.contains("you"), "user message scrolled out of view");
+    }
+}

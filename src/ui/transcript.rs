@@ -118,3 +118,29 @@ fn tool_lines(card: &ToolCard, focused: bool, theme: &Theme) -> Vec<Line<'static
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use crate::config::Config;
+
+    #[test]
+    fn transcript_line_count_matches_rendered_lines() {
+        let mut app = App::new(&Config::default(), Theme::ansi());
+        app.items.push(Item::User { text: "Reply with only a fenced python code block.".into() });
+        app.items.push(Item::Assistant {
+            id: 1,
+            md: "```python\nprint(\"hello\")\n```".into(),
+            revision: 0,
+            streaming: false,
+        });
+        let text = build(&mut app);
+        let rendered = text.lines.len();
+        let counted = ratatui::widgets::Paragraph::new(text)
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .line_count(100);
+        eprintln!("rendered Text lines = {rendered}, line_count(100) = {counted}");
+        assert_eq!(rendered, counted, "line_count disagrees with actual line count");
+    }
+}
