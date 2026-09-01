@@ -4,6 +4,17 @@ An omarchy-native terminal client for [Maple AI](https://trymaple.ai) — privat
 end-to-end-encrypted AI chat and **agent mode**, in your terminal, themed by your
 active omarchy theme.
 
+![maplet in chat mode](docs/chat.png)
+
+Chat streams markdown with syntax-highlighted code, and takes its colours from
+whichever omarchy theme is active (Tokyo Night above).
+
+![maplet in agent mode](docs/agent.png)
+
+Agent mode runs [goose](https://github.com/aaif-goose/goose) against the same
+encrypted enclave, showing its thinking, collapsible tool calls, and permission
+prompts inline.
+
 ```
 maplet (one binary)
  ├─ embedded maple-proxy ── attestation + E2EE ──▶ enclave.trymaple.ai (AWS Nitro TEE)
