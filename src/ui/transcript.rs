@@ -85,12 +85,15 @@ pub fn build(app: &mut App) -> Text<'static> {
 fn tool_lines(card: &ToolCard, focused: bool, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let marker = if focused { "▌" } else { " " };
+    // goose reports most tools as kind "other", so naming it adds nothing —
+    // show the label only when it actually says something.
+    let label = match card.view.kind.as_str() {
+        "other" | "unknown" => format!("{} ", kind_glyph(&card.view.kind)),
+        kind => format!("{} {} · ", kind_glyph(kind), kind),
+    };
     let mut header = vec![
         Span::styled(marker.to_string(), theme.accent_style()),
-        Span::styled(
-            format!("{} {} · ", kind_glyph(&card.view.kind), card.view.kind),
-            theme.accent_style(),
-        ),
+        Span::styled(label, theme.accent_style()),
         Span::styled(card.view.title.clone(), theme.body()),
         Span::raw(" · "),
         status_span(&card.view.status, theme),

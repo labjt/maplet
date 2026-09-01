@@ -22,9 +22,19 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .split(area);
 
-    // Transcript with scroll/follow.
-    let text = transcript::build(app);
+    // Transcript with scroll/follow. A short conversation is padded from the
+    // top so it rests just above the input, the way a terminal fills up,
+    // rather than stranding the messages at the top of an empty pane.
+    let mut text = transcript::build(app);
     let transcript_area = chunks[0];
+    let measured = Paragraph::new(text.clone())
+        .wrap(Wrap { trim: false })
+        .line_count(transcript_area.width) as u16;
+    if measured < transcript_area.height {
+        let mut lines = vec![Line::default(); (transcript_area.height - measured) as usize];
+        lines.append(&mut text.lines);
+        text = ratatui::text::Text::from(lines);
+    }
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     let total = paragraph.line_count(transcript_area.width) as u16;
     let max_scroll = total.saturating_sub(transcript_area.height);
@@ -103,5 +113,18 @@ mod tests {
         let screen = render(&mut app, 100, 30);
         eprintln!("--- rendered ---\n{screen}\n--- end ---");
         assert!(screen.contains("you"), "user message scrolled out of view");
+    }
+
+    /// A short conversation rests just above the input, not at the top of an
+    /// empty pane, so the transcript fills like a terminal.
+    #[test]
+    fn short_conversation_is_bottom_anchored() {
+        let mut app = App::new(&Config::default(), Theme::ansi());
+        app.items.push(Item::User { text: "hello".into() });
+        let screen = render(&mut app, 80, 24);
+        let rows: Vec<&str> = screen.lines().collect();
+        let msg = rows.iter().position(|r| r.contains("hello")).expect("message rendered");
+        // input box occupies the last few rows; the message should sit just above it
+        assert!(msg > rows.len() / 2, "message at row {msg} of {}, expected near the bottom", rows.len());
     }
 }
