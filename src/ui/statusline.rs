@@ -31,7 +31,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(app.theme.name.clone(), theme.hint()),
         busy,
     ]);
-    let hints = "?:help · Ctrl+T:mode · Ctrl+O:model ";
+    let hints = "/ commands · ? help ";
     let pad = (area.width as usize)
         .saturating_sub(line_width(&left))
         .saturating_sub(hints.len());

@@ -1,8 +1,9 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use ratatui_textarea::TextArea;
+use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::oneshot;
 
 use crate::chat::types::ChatMessage;
+use crate::commands::{self, Completion, Parsed};
 use crate::config::Config;
 use crate::event::{
     AcpCommand, AcpEvent, AppEvent, ChatEvent, PermissionOptionView, PermissionOutcome,
@@ -71,6 +72,7 @@ pub struct App {
     pub agent_session: Option<String>,
     pub focused_tool: Option<usize>,
     pub markdown: MarkdownCache,
+    pub completion: Option<Completion>,
     pub session_id: String,
     next_id: u64,
 }
@@ -98,6 +100,7 @@ impl App {
             agent_session: None,
             focused_tool: None,
             markdown: MarkdownCache::default(),
+            completion: None,
             session_id: uuid::Uuid::new_v4().to_string(),
             next_id: 0,
         }
@@ -284,6 +287,55 @@ impl App {
         if self.modal.is_some() {
             return self.handle_modal_key(key);
         }
+        if let Some(effects) = self.handle_completion_key(key) {
+            return effects;
+        }
+        let effects = self.handle_input_key(key);
+        self.refresh_completion();
+        effects
+    }
+
+    /// Keys owned by the slash-command popup while it is open.
+    fn handle_completion_key(&mut self, key: KeyEvent) -> Option<Vec<Effect>> {
+        let comp = self.completion.as_ref()?;
+        let (len, sel) = (comp.items.len(), comp.selected);
+        let chosen = comp.selected().name;
+        let takes_args = !comp.selected().args.is_empty();
+        match key.code {
+            KeyCode::Up => {
+                self.completion.as_mut()?.selected = sel.saturating_sub(1);
+                Some(vec![])
+            }
+            KeyCode::Down => {
+                self.completion.as_mut()?.selected = (sel + 1).min(len - 1);
+                Some(vec![])
+            }
+            KeyCode::Tab => {
+                let filled = if takes_args { format!("/{chosen} ") } else { format!("/{chosen}") };
+                self.set_input(&filled);
+                self.refresh_completion();
+                Some(vec![])
+            }
+            KeyCode::Enter => {
+                self.clear_input();
+                Some(self.run_command(chosen, ""))
+            }
+            KeyCode::Esc => {
+                self.completion = None;
+                Some(vec![])
+            }
+            _ => None,
+        }
+    }
+
+    fn set_input(&mut self, text: &str) {
+        let mut input = TextArea::new(vec![text.to_string()]);
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        input.move_cursor(CursorMove::End);
+        self.input = input;
+    }
+
+    fn handle_input_key(&mut self, key: KeyEvent) -> Vec<Effect> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         match (key.code, ctrl, alt) {
@@ -380,8 +432,17 @@ impl App {
         if text.is_empty() {
             return vec![];
         }
-        self.input = TextArea::default();
-        self.input.set_cursor_line_style(ratatui::style::Style::default());
+        if let Some(parsed) = commands::parse(&text) {
+            self.clear_input();
+            return match parsed {
+                Parsed::Known(cmd, args) => self.run_command(cmd.name, &args),
+                Parsed::Unknown(name) => {
+                    self.push_error(format!("unknown command /{name} — try /help"));
+                    vec![]
+                }
+            };
+        }
+        self.clear_input();
         self.items.push(Item::User { text: text.clone() });
         self.busy = true;
         self.follow = true;
@@ -396,6 +457,73 @@ impl App {
                 }]
             }
             Mode::Agent => vec![Effect::Acp(AcpCommand::Prompt { text })],
+        }
+    }
+
+    fn clear_input(&mut self) {
+        self.input = TextArea::default();
+        self.input.set_cursor_line_style(ratatui::style::Style::default());
+        self.completion = None;
+    }
+
+    /// Recompute the command completion popup from the current input.
+    fn refresh_completion(&mut self) {
+        let line = self.input.lines().first().cloned().unwrap_or_default();
+        let single_line = self.input.lines().len() == 1;
+        self.completion = if single_line {
+            Completion::for_input(&line, self.completion.as_ref())
+        } else {
+            None
+        };
+    }
+
+    fn run_command(&mut self, name: &str, args: &str) -> Vec<Effect> {
+        match name {
+            "help" => self.modal = Some(Modal::Help),
+            "new" => self.new_session(),
+            "sessions" => {
+                let items = crate::session::list();
+                if items.is_empty() {
+                    self.push_info("no saved sessions yet");
+                } else {
+                    self.modal = Some(Modal::SessionPicker { items, selected: 0 });
+                }
+            }
+            "chat" | "agent" => {
+                let want = if name == "chat" { Mode::Chat } else { Mode::Agent };
+                if self.mode == want {
+                    self.push_info(format!("already in {name} mode"));
+                } else {
+                    self.mode = want;
+                    self.push_info(format!("{name} mode"));
+                }
+            }
+            "model" => {
+                if args.is_empty() {
+                    self.open_model_picker();
+                } else {
+                    self.set_model(args.to_string());
+                }
+            }
+            "quit" => return vec![Effect::Quit],
+            other => self.push_error(format!("unknown command /{other}")),
+        }
+        vec![]
+    }
+
+    fn set_model(&mut self, model: String) {
+        let known = self.available_models.is_empty() || self.available_models.contains(&model);
+        match self.mode {
+            Mode::Chat => self.chat_model = model.clone(),
+            Mode::Agent => self.agent_model = model.clone(),
+        }
+        if known {
+            self.push_info(format!("model: {model}"));
+        } else {
+            self.push_info(format!("model: {model} (not in this account's list)"));
+        }
+        if self.mode == Mode::Agent {
+            self.push_info("agent model applies to the next session");
         }
     }
 
@@ -518,16 +646,8 @@ impl App {
                 }
                 KeyCode::Enter => {
                     let model = items[*selected].clone();
-                    match self.mode {
-                        Mode::Chat => self.chat_model = model,
-                        Mode::Agent => self.agent_model = model,
-                    }
                     self.modal = None;
-                    if self.mode == Mode::Agent {
-                        self.push_info(
-                            "agent model applies to the next session (Ctrl+T twice)",
-                        );
-                    }
+                    self.set_model(model);
                     vec![]
                 }
                 KeyCode::Esc => {
