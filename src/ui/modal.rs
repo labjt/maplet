@@ -10,9 +10,9 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     match modal {
         Modal::Help => {
-            let rect = centered(area, 56, 16);
+            let rect = centered(area, 62, 24);
             frame.render_widget(Clear, rect);
-            let lines: Vec<Line> = HELP
+            let mut lines: Vec<Line> = HELP
                 .iter()
                 .map(|(k, v)| {
                     Line::from(vec![
@@ -21,6 +21,22 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
                     ])
                 })
                 .collect();
+            lines.push(Line::default());
+            lines.push(Line::from(Span::styled(
+                "  commands (type / for completion)",
+                theme.hint(),
+            )));
+            for c in crate::commands::COMMANDS {
+                let name = if c.args.is_empty() {
+                    format!("/{}", c.name)
+                } else {
+                    format!("/{} {}", c.name, c.args)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{name:>12}  "), theme.accent_style()),
+                    Span::styled(c.help, theme.body()),
+                ]));
+            }
             frame.render_widget(
                 Paragraph::new(lines).style(theme.card_bg()).block(titled_block("help", app)),
                 rect,
@@ -33,7 +49,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
             let list = List::new(items.iter().map(|m| ListItem::new(m.clone())))
                 .style(theme.card_bg())
                 .highlight_style(theme.selected())
-                .highlight_symbol("▸ ")
+                .highlight_symbol("› ")
                 .block(titled_block("model", app));
             let mut state = ListState::default().with_selected(Some(*selected));
             frame.render_stateful_widget(list, rect, &mut state);
@@ -45,7 +61,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
             let list = List::new(items.iter().map(|s| ListItem::new(s.title.clone())))
                 .style(theme.card_bg())
                 .highlight_style(theme.selected())
-                .highlight_symbol("▸ ")
+                .highlight_symbol("› ")
                 .block(titled_block("sessions", app));
             let mut state = ListState::default().with_selected(Some(*selected));
             frame.render_stateful_widget(list, rect, &mut state);
@@ -75,7 +91,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
                 ListItem::new(format!("[{key}] {}", o.name))
             }))
             .highlight_style(theme.selected())
-            .highlight_symbol("▸ ");
+            .highlight_symbol("› ");
             let mut state = ListState::default().with_selected(Some(*selected));
             frame.render_stateful_widget(list, chunks[1], &mut state);
         }

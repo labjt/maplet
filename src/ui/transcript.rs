@@ -7,26 +7,26 @@ const RAW_PREVIEW_LIMIT: usize = 1200;
 
 fn kind_glyph(kind: &str) -> &'static str {
     match kind {
-        "read" => "⊙",
-        "edit" => "✎",
-        "delete" => "✕",
-        "move" => "⇄",
-        "search" => "⌕",
-        "execute" => "⚒",
-        "think" => "✻",
+        "read" => "≡",
+        "edit" => "±",
+        "delete" => "×",
+        "move" => "→",
+        "search" => "○",
+        "execute" => "»",
+        "think" => "~",
         "fetch" => "↓",
-        _ => "•",
+        _ => "·",
     }
 }
 
 fn status_span(status: &str, theme: &Theme) -> Span<'static> {
     match status {
-        "completed" => Span::styled("✓ completed", ratatui::style::Style::default().fg(theme.green)),
-        "failed" => Span::styled("✗ failed", theme.error()),
+        "completed" => Span::styled("● completed", ratatui::style::Style::default().fg(theme.green)),
+        "failed" => Span::styled("× failed", theme.error()),
         "in_progress" => {
-            Span::styled("… running", ratatui::style::Style::default().fg(theme.yellow))
+            Span::styled("◌ running", ratatui::style::Style::default().fg(theme.yellow))
         }
-        _ => Span::styled("· pending", theme.hint()),
+        _ => Span::styled("○ pending", theme.hint()),
     }
 }
 
@@ -45,7 +45,7 @@ pub fn build(app: &mut App) -> Text<'static> {
         match item {
             Item::User { text, .. } => {
                 for (i, l) in text.lines().enumerate() {
-                    let prefix = if i == 0 { "you ▸ " } else { "      " };
+                    let prefix = if i == 0 { "you › " } else { "      " };
                     lines.push(Line::from(vec![
                         Span::styled(prefix.to_string(), theme.accent_style()),
                         Span::styled(l.to_string(), theme.user()),
@@ -58,10 +58,10 @@ pub fn build(app: &mut App) -> Text<'static> {
             }
             Item::Thought { text, collapsed, .. } => {
                 if *collapsed {
-                    lines.push(Line::from(Span::styled("✻ thought…".to_string(), theme.thought())));
+                    lines.push(Line::from(Span::styled("~ thought…".to_string(), theme.thought())));
                 } else {
                     for l in text.lines() {
-                        lines.push(Line::from(Span::styled(format!("✻ {l}"), theme.thought())));
+                        lines.push(Line::from(Span::styled(format!("~ {l}"), theme.thought())));
                     }
                 }
             }

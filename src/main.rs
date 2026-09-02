@@ -1,6 +1,7 @@
 mod agent;
 mod app;
 mod chat;
+mod commands;
 mod config;
 mod event;
 mod logging;
@@ -329,7 +330,7 @@ async fn repl(config: Config, model: Option<String>) -> Result<()> {
     let stdin = std::io::stdin();
     let mut line = String::new();
     loop {
-        eprint!("you ▸ ");
+        eprint!("you › ");
         line.clear();
         if stdin.read_line(&mut line)? == 0 {
             return Ok(());
@@ -340,7 +341,7 @@ async fn repl(config: Config, model: Option<String>) -> Result<()> {
         }
         history.push(ChatMessage::user(prompt));
 
-        eprint!("maple ▸ ");
+        eprint!("maple › ");
         let mut reply = String::new();
         let result = client
             .stream_chat(&model, history.clone(), CancellationToken::new(), |delta| {
