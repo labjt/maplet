@@ -48,6 +48,24 @@ model calls are enclave-encrypted too.
 `maplet` — the TUI. Also: `maplet repl` (plain chat REPL), `maplet models`,
 `maplet agent-oneshot "<prompt>"` (headless agent turn, prints ACP events).
 
+### Commands
+
+Type `/` for a filtered completion list; `Tab` completes, `Enter` runs the
+highlighted command, `Esc` dismisses.
+
+![slash commands](docs/commands.png)
+
+| Command | Action |
+|---|---|
+| `/help` | show keys and commands |
+| `/model [id]` | pick a model, or set one by id |
+| `/new` (`/clear`) | start a new session |
+| `/sessions` (`/resume`) | reopen a saved session |
+| `/chat` · `/agent` | switch mode |
+| `/quit` (`/exit`, `/q`) | leave maplet |
+
+### Keys
+
 | Key | Action |
 |---|---|
 | `Enter` / `Alt+Enter` | send / newline |
