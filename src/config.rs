@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
-/// Model Maple's own agent mode defaults to; tool-calling capable.
-pub const DEFAULT_MODEL: &str = "glm-5-2";
+/// Default model: tool-calling capable, and what Maple's own agent mode uses.
+/// Maple retires model ids periodically, so this is a starting point rather
+/// than a guarantee — `maplet models` lists what the account can actually use.
+pub const DEFAULT_MODEL: &str = "glm-5-3";
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
