@@ -14,6 +14,10 @@ pub struct GooseSpawn {
     pub api_key: String,
     pub builtins: Vec<String>,
     pub mcp_servers: Vec<McpServerDecl>,
+    /// Ask before every tool use. goose's own default (smart_approve) has been
+    /// seen approving a shell `rm` on its own, so maplet sets the mode
+    /// explicitly rather than inheriting whatever the user's goose config says.
+    pub approve: bool,
 }
 
 impl GooseSpawn {
@@ -26,6 +30,7 @@ impl GooseSpawn {
             api_key,
             builtins: config.agent.builtins.clone(),
             mcp_servers: config.agent.mcp_servers.clone(),
+            approve: true,
         })
     }
 
@@ -36,6 +41,7 @@ impl GooseSpawn {
         }
         // Zed's pattern: provider config via env, scoped to this subprocess.
         config = config
+            .env("GOOSE_MODE", if self.approve { "approve" } else { "auto" })
             .env("GOOSE_PROVIDER", "openai")
             .env("GOOSE_MODEL", &self.model)
             .env("OPENAI_HOST", &self.proxy_base_url)
