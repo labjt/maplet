@@ -53,7 +53,9 @@ pub async fn start(config: &Config, api_key: &str) -> Result<ProxyHandle> {
     });
 
     let handle = ProxyHandle { port };
+    crate::breadcrumb::mark("proxy: bound, attesting enclave");
     wait_healthy(&handle).await?;
+    crate::breadcrumb::mark("proxy: healthy");
     Ok(handle)
 }
 

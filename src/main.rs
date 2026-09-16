@@ -1,5 +1,6 @@
 mod agent;
 mod app;
+mod breadcrumb;
 mod chat;
 mod cli;
 mod commands;
@@ -73,9 +74,13 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    breadcrumb::trim();
+    breadcrumb::mark(&format!("start argv={:?}", std::env::args().skip(1).collect::<Vec<_>>()));
     let cli = Cli::parse();
     let config = Config::load()?;
+    breadcrumb::mark("config-loaded");
     let _log_guard = logging::init()?;
+    breadcrumb::mark("logging-ready");
 
     match cli.command {
         Some(Command::Repl { model }) => repl(config, model).await,

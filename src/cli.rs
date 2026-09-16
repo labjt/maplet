@@ -55,6 +55,7 @@ pub async fn run(config: Config, args: RunArgs) -> Result<i32> {
     }
 
     let api_key = config.resolve_api_key()?;
+    crate::breadcrumb::mark("cli: key resolved, starting proxy");
     ui.status(&format!("working in {}", cwd.display()));
     ui.status("attesting enclave…");
     let proxy_handle = proxy::start(&config, &api_key).await?;
@@ -66,6 +67,7 @@ pub async fn run(config: Config, args: RunArgs) -> Result<i32> {
     spawn_cfg.approve = !args.yes;
     // Maple retires model ids, and asking for a dead one only surfaces as an
     // opaque 400 once a turn is already under way. Check up front instead.
+    crate::breadcrumb::mark("cli: proxy listening");
     let client = crate::chat::ChatClient::new(proxy_handle.base_url(), api_key);
     match client.list_models().await {
         Ok(models) if !models.iter().any(|m| *m == spawn_cfg.model) => {
@@ -80,6 +82,7 @@ pub async fn run(config: Config, args: RunArgs) -> Result<i32> {
     }
     ui.status(&format!("model {}", spawn_cfg.model));
 
+    crate::breadcrumb::mark("cli: spawning goose");
     let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
     let handle = agent::spawn(spawn_cfg, cwd, tx);
 
@@ -148,6 +151,7 @@ pub async fn run(config: Config, args: RunArgs) -> Result<i32> {
     }
 
     let _ = handle.cmd_tx.send(AcpCommand::Shutdown);
+    crate::breadcrumb::mark(&format!("cli: exit {code}"));
     Ok(code)
 }
 
