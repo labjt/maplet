@@ -1,6 +1,7 @@
 mod agent;
 mod app;
 mod chat;
+mod cli;
 mod commands;
 mod config;
 mod event;
@@ -40,12 +41,33 @@ enum Command {
     },
     /// List available chat models.
     Models,
-    /// Run one agent turn headlessly, printing every ACP event (plumbing check).
-    AgentOneshot {
-        prompt: String,
-        /// Working directory for the agent session (default: current dir)
-        #[arg(long)]
+    /// Work in a directory from the command line: `maplet run "tidy the imports"`.
+    ///
+    /// Answers stream to stdout, tool calls and status to stderr. With no
+    /// prompt on a terminal it starts an interactive session; piped stdin is
+    /// used as the prompt, or as context for a prompt given as an argument.
+    #[command(visible_alias = "r")]
+    Run {
+        /// What you want done. Omit on a terminal for an interactive session.
+        prompt: Vec<String>,
+        /// Directory to work in (default: the current one)
+        #[arg(short = 'C', long)]
         cwd: Option<std::path::PathBuf>,
+        /// Model id (default from config)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Approve tool use without asking — required when there is no terminal
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Only print the answer
+        #[arg(short, long)]
+        quiet: bool,
+        /// Emit JSON Lines of every event instead of prose
+        #[arg(long)]
+        json: bool,
+        /// Stream the model's reasoning as it works
+        #[arg(long)]
+        think: bool,
     },
 }
 
@@ -58,7 +80,18 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Command::Repl { model }) => repl(config, model).await,
         Some(Command::Models) => models(config).await,
-        Some(Command::AgentOneshot { prompt, cwd }) => agent_oneshot(config, prompt, cwd).await,
+        Some(Command::Run { prompt, cwd, model, yes, quiet, json, think }) => {
+            let args = cli::RunArgs { prompt, cwd, model, yes, quiet, json, think };
+            let code = match cli::run(config, args).await {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("! {e:#}");
+                    cli::EXIT_ERROR
+                }
+            };
+            drop(_log_guard);
+            std::process::exit(code);
+        }
         None => tui(config).await,
     }
 }
@@ -225,92 +258,6 @@ fn spawn_health_pinger(base_url: String, tx: mpsc::UnboundedSender<AppEvent>) {
             }
         }
     });
-}
-
-async fn agent_oneshot(
-    config: Config,
-    prompt: String,
-    cwd: Option<std::path::PathBuf>,
-) -> Result<()> {
-    use crate::event::{AcpCommand, AcpEvent, PermissionOutcome};
-
-    let api_key = config.resolve_api_key()?;
-    eprintln!("starting embedded maple-proxy (attesting enclave)...");
-    let proxy_handle = proxy::start(&config, &api_key).await?;
-    let cwd = match cwd {
-        Some(c) => c.canonicalize()?,
-        None => std::env::current_dir()?,
-    };
-    let spawn_cfg = agent::GooseSpawn::from_config(&config, proxy_handle.base_url(), api_key)?;
-    eprintln!("spawning goose acp (model {}, cwd {})...", spawn_cfg.model, cwd.display());
-
-    let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
-    let handle = agent::spawn(spawn_cfg, cwd, tx);
-
-    let mut prompted = false;
-    while let Some(event) = rx.recv().await {
-        let AppEvent::Acp(event) = event else { continue };
-        match event {
-            AcpEvent::SessionReady { session_id } => {
-                println!("session-ready {session_id}");
-                if !prompted {
-                    prompted = true;
-                    handle.cmd_tx.send(AcpCommand::Prompt { text: prompt.clone() })?;
-                }
-            }
-            AcpEvent::MessageChunk(text) => {
-                print!("{text}");
-                use std::io::Write;
-                let _ = std::io::stdout().flush();
-            }
-            AcpEvent::ThoughtChunk(text) => print!("[thought] {text}"),
-            AcpEvent::ToolCall(tc) => {
-                println!("\ntool-call {} {} · {} · {}", tc.id, tc.kind, tc.title, tc.status)
-            }
-            AcpEvent::ToolCallUpdate(up) => {
-                println!("tool-update {} · {}", up.id, up.status.as_deref().unwrap_or("?"))
-            }
-            AcpEvent::Plan(entries) => {
-                println!("plan:");
-                for e in entries {
-                    println!("  [{}] {}", e.status, e.content);
-                }
-            }
-            AcpEvent::PermissionRequest { title, options, reply } => {
-                println!("\npermission: {title}");
-                for (i, o) in options.iter().enumerate() {
-                    println!("  {i}: {} ({})", o.name, o.kind);
-                }
-                eprint!("allow? [y/n] ");
-                let mut line = String::new();
-                std::io::stdin().read_line(&mut line)?;
-                let pick = |kind: &str| options.iter().find(|o| o.kind == kind).map(|o| o.id.clone());
-                let outcome = if line.trim().eq_ignore_ascii_case("y") {
-                    pick("allow_once").or_else(|| options.first().map(|o| o.id.clone()))
-                } else {
-                    pick("reject_once")
-                };
-                let _ = reply.send(match outcome {
-                    Some(option_id) => PermissionOutcome::Selected { option_id },
-                    None => PermissionOutcome::Cancelled,
-                });
-            }
-            AcpEvent::TurnEnded { stop_reason } => {
-                println!("\nturn-ended {stop_reason}");
-                let _ = handle.cmd_tx.send(AcpCommand::Shutdown);
-            }
-            AcpEvent::Error(e) => println!("\nerror: {e}"),
-            AcpEvent::AuthRequired(e) => {
-                println!("\nauth-required: {e}");
-                let _ = handle.cmd_tx.send(AcpCommand::Shutdown);
-            }
-            AcpEvent::Exited(reason) => {
-                println!("agent-exited: {reason}");
-                break;
-            }
-        }
-    }
-    Ok(())
 }
 
 async fn models(config: Config) -> Result<()> {
